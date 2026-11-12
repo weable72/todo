@@ -19,6 +19,7 @@
     over_request_rate_limit: '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.',
     session_not_found: '로그인이 만료되었습니다. 다시 로그인해 주세요.',
     session_expired: '로그인이 만료되었습니다. 다시 로그인해 주세요.',
+    provider_disabled: 'Google 로그인이 아직 켜져 있지 않습니다. 관리자에게 문의해 주세요.',
   };
 
   const MESSAGE_PATTERNS = [
@@ -27,14 +28,57 @@
     [/already registered/i, 'user_already_exists'],
     [/password should be at least/i, 'weak_password'],
     [/rate limit/i, 'over_request_rate_limit'],
+    [/provider is not enabled|unsupported provider/i, 'provider_disabled'],
   ];
+
+  const OAUTH_FALLBACK = 'Google 로그인에 실패했습니다. 잠시 후 다시 시도해 주세요.';
+
+  /**
+   * OAuth 로그인에서 돌아온 주소(?error=... 또는 #error=...)에서 오류를 찾아 한국어 문장으로 바꾼다.
+   * 오류가 없으면 null.
+   */
+  function oauthErrorFromUrl(href) {
+    let url;
+    try {
+      url = new URL(href);
+    } catch (error) {
+      return null;
+    }
+    const params = new URLSearchParams(url.search);
+    new URLSearchParams(url.hash.replace(/^#/, '')).forEach((value, key) => {
+      if (!params.has(key)) params.set(key, value);
+    });
+    const error = params.get('error');
+    const code = params.get('error_code');
+    const description = params.get('error_description') || '';
+    if (!error && !code) return null;
+    if (error === 'access_denied' && !code) return '로그인을 취소했습니다.';
+    if (code && ERROR_MESSAGES[code]) return ERROR_MESSAGES[code];
+    const match = MESSAGE_PATTERNS.find(([pattern]) => pattern.test(description));
+    if (match) return ERROR_MESSAGES[match[1]];
+    if (error === 'access_denied') return '로그인을 취소했습니다.';
+    return OAUTH_FALLBACK;
+  }
+
+  /** 주소에서 OAuth 오류 관련 값만 지운 주소를 돌려준다. */
+  function stripOAuthError(href) {
+    const url = new URL(href);
+    const keys = ['error', 'error_code', 'error_description'];
+    keys.forEach((key) => url.searchParams.delete(key));
+    const hash = new URLSearchParams(url.hash.replace(/^#/, ''));
+    keys.forEach((key) => hash.delete(key));
+    url.hash = hash.toString();
+    return url.toString().replace(/#$/, '');
+  }
 
   /** Supabase 오류를 사용자에게 보여 줄 한국어 문장으로 바꾼다. */
   function toKoreanMessage(error, fallback = '요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.') {
     if (!error) return fallback;
-    if (error.code && ERROR_MESSAGES[error.code]) return ERROR_MESSAGES[error.code];
     const message = String(error.message || '');
     const match = MESSAGE_PATTERNS.find(([pattern]) => pattern.test(message));
+    // validation_failed는 범위가 넓어서, 메시지로 더 구체적인 원인을 알 수 있으면 그것을 쓴다.
+    if (error.code === 'validation_failed' && match) return ERROR_MESSAGES[match[1]];
+    if (error.code && ERROR_MESSAGES[error.code]) return ERROR_MESSAGES[error.code];
     if (match) return ERROR_MESSAGES[match[1]];
     if (/fetch|network/i.test(message)) return '서버에 연결하지 못했습니다. 인터넷 연결을 확인해 주세요.';
     return fallback;
@@ -76,6 +120,16 @@
       /** 가입 후 바로 로그인되면 session이 있고, 이메일 인증이 필요하면 session이 null이다. */
       async signUp(email, password, redirectTo) {
         return unwrap(client.auth.signUp({ email, password, options: { emailRedirectTo: redirectTo } }));
+      },
+
+      /** Google 로그인 화면으로 이동한다. 돌아오면 onAuthChange가 SIGNED_IN을 받는다. */
+      async signInWithGoogle(redirectTo) {
+        return unwrap(
+          client.auth.signInWithOAuth({
+            provider: 'google',
+            options: { redirectTo, queryParams: { prompt: 'select_account' } },
+          })
+        );
       },
 
       async signOut() {
@@ -138,7 +192,7 @@
     };
   }
 
-  const TodoStore = { createStore, toKoreanMessage, StoreError };
+  const TodoStore = { createStore, toKoreanMessage, oauthErrorFromUrl, stripOAuthError, StoreError };
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = TodoStore;

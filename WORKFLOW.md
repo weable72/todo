@@ -276,3 +276,82 @@ todo repo가 만들어졌으니 GITHUB_PAGES.md의 4번까지 네가 진행해�
   - 2단계: `weable72/todo` 원격 저장소가 있고 비어 있음을 확인함.
   - 3단계: `rsync`로 `~/work/todo`를 만듦(`node_modules`, `coverage` 제외). `config.js`에 secret/service_role 키가 없음을 확인하고 `.nojekyll`을 만듦. `npm ci && npm test`를 실행함.
   - 4단계: `git init -b main`, 첫 commit, `origin`(`git@github.com:weable72/todo.git`) 추가, `git push -u origin main`.
+
+---
+
+## 17. 프롬프트
+
+```
+배포는 완료되었으니 작업한 내용을 공용 repo에 복사하고 동일하게 commit & push해줘. commit log에 github pages URI를 포함시켜줘.
+```
+
+### 결과
+- 배포 주소 https://weable72.github.io/todo/ 가 HTTP 200으로 응답함(제목 "오늘 할일")을 확인함.
+- `~/work/todo`의 내용을 공용 repo `src/exercise/bardroh/day13/todo`로 동기화함(`.git`, `node_modules`, `coverage` 제외).
+  - 이 폴더 안에서만 지운 파일을 반영함: `DEPLOY.md`를 삭제함(`GITHUB_PAGES.md`로 대체).
+  - 추가된 파일: `.nojekyll`, `GITHUB_PAGES.md`, `config.js`, `store.js`, `tests/fakeSupabase.js`, `tests/store.test.js`
+- 기존 형식(`[day13] bardroh: ...`)으로 commit하고 GitHub Pages 주소를 commit 메시지에 넣음. 공용 repo `main`에 push함.
+- `~/work/todo`(weable72/todo)에 생긴 이 `WORKFLOW.md` 변경은 commit·push하지 않음.
+
+---
+
+## 18. 프롬프트
+
+```
+google의 oauth 인증을 추가하고 싶은데 어떻게 해야 하는지 정리해서 GOOGLE_OAUTH.md로 저장해줘.
+```
+
+### 결과
+- `GOOGLE_OAUTH.md`를 새로 작성함 (코드는 변경하지 않음). 작업 폴더 `~/work/todo`에 쓰고 개발 폴더 `~/work/vibe/day13/todo`에도 같은 파일을 복사함.
+  - 동작 흐름: `signInWithOAuth` → Google → Supabase 콜백(`https://dffjixdhzzlbykvbrzyz.supabase.co/auth/v1/callback`) → 앱. Client Secret은 Supabase에만 넣음. 같은 이메일 계정은 자동으로 연결됨.
+  - Google Cloud: 프로젝트 생성, Google Auth Platform(Branding·승인된 도메인, Audience External·테스트 사용자, 기본 스코프 3개, 게시와 브랜드 확인), 웹 OAuth 클라이언트(JS 원본 2개, 리디렉션 URI는 Supabase 콜백).
+  - Supabase: Google provider 켜기, URL Configuration 확인. Confirm email이 꺼진 상태의 계정 연결 위험과 권장 설정을 적음.
+  - 앱 코드 변경 계획: 버튼(브랜딩 가이드), `store.signInWithGoogle`(`prompt: select_account`), 돌아온 주소의 `#error` 처리, 스타일, 가짜 클라이언트와 테스트, 문서 갱신(`SUPABASE.md`의 "이메일만" 결정 변경).
+  - 확인 순서, 문제 해결 표(`redirect_uri_mismatch`, 테스트 사용자, Site URL, Secret 오류 등), 참고 링크.
+- 코드 변경이 없어 테스트는 실행하지 않음. commit·push하지 않음.
+
+---
+
+## 19. 프롬프트
+
+```
+google oauth 설정이 끝나서 얻은 client_id와 client_secret을 supabase에 주었고 설정도 마쳤어. 이제 소스를 수정해줘.
+```
+
+### 결과
+- 사전 확인: Supabase Auth 설정에서 provider `google`, `email`이 켜져 있음을 확인함. `/auth/v1/authorize?provider=google`이 Google로 302 리디렉션되고, `redirect_uri`가 Supabase 콜백인 것도 확인함.
+- 작업 폴더 `~/work/todo`에서 수정함:
+  - `index.html`: 로그인 카드에 "Google로 계속하기" 버튼(공식 4색 G 로고)과 "또는 이메일로" 구분선을 추가함.
+  - `store.js`:
+    - `signInWithGoogle(redirectTo)`를 추가함(`provider: 'google'`, `queryParams.prompt = 'select_account'`).
+    - 돌아온 주소의 OAuth 오류를 처리하는 `oauthErrorFromUrl`·`stripOAuthError`를 추가함. `?error=`와 `#error=`를 모두 지원함.
+    - `provider_disabled` 메시지를 추가함. `validation_failed` 코드는 메시지로 원인을 알 수 있으면 더 구체적인 문장을 쓰도록 바꿈.
+  - `app.js`:
+    - Google 버튼을 처리함(이동하는 동안 비활성화와 진행 표시, 실패 시 한국어 오류).
+    - 시작할 때 주소의 OAuth 오류를 읽어 로그인 카드에 한 번 보여 주고 주소에서 지움. 로그인 성공 토큰(`#access_token`)이 있는 주소는 건드리지 않음.
+    - `pageshow`일 때 버튼을 다시 활성화함.
+  - `style.css`: `.btn--outlined`, `.google-logo`, `.auth-divider` 스타일을 추가함.
+- 테스트:
+  - `tests/fakeSupabase.js`에 `signInWithOAuth`와 `simulateOAuthSignIn`(같은 이메일이면 같은 사용자에 연결)을 추가함.
+  - `tests/store.test.js`에 Google 로그인과 OAuth 오류 처리 테스트를 추가함.
+  - `tests/app.test.js`에 버튼, 호출 인자, 로그인 후 화면, 같은 이메일 계정 연결, 실패 오류, 돌아온 주소의 오류 안내와 주소 정리, 성공 토큰 주소 유지 테스트를 추가함.
+  - `npm test` 결과 3개 스위트, 129개 테스트 모두 통과함. 오류 안내 코드를 일부러 지우면 3개가 실패하는 것도 확인함.
+- 실제 `supabase-js` 번들로 확인함: 페이지가 정상 부팅되고 Google 버튼이 표시됨. `signInWithOAuth`가 만든 주소가 Supabase → `accounts.google.com`(`prompt=select_account`)으로 이어짐. Google 계정 로그인 자체는 사용자가 브라우저에서 확인해야 함.
+- 문서:
+  - `README.md` 기능 목록에 Google 로그인을 추가하고, `file://`에서는 안 된다는 점을 적음.
+  - `SUPABASE.md`의 "이메일만" 결정을 "이메일 + Google"로 바꿈.
+  - `GOOGLE_OAUTH.md` 5장을 "구현 완료"로 바꿈.
+- 개발 폴더 `~/work/vibe/day13/todo`에도 같은 내용을 동기화함. commit·push하지 않음.
+
+---
+
+## 20. 프롬프트
+
+```
+로컬에서 확인했으니 github pages용의 repo에 sync하고 배포해줘
+```
+
+### 결과
+- 작업 폴더 `~/work/todo`가 GitHub Pages용 저장소(`weable72/todo`)이고, 개발 폴더와 내용이 같음을 확인함.
+- push 전에 확인함: 원격에 새 커밋 없음, `npm test` 3개 스위트 129개 통과, 변경 파일에 secret 키(`sb_secret_`, Google `GOCSPX-`) 없음.
+- Google 로그인 변경분을 commit하고 `main`에 push함. 브랜치 배포라서 push하면 GitHub Pages가 자동으로 배포함.

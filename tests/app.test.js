@@ -102,6 +102,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  window.history.replaceState(null, '', '/');
   if (app) app.destroy();
   jest.restoreAllMocks();
   delete document.elementFromPoint;
@@ -593,5 +594,92 @@ describe('예전 localStorage 데이터 가져오기', () => {
   test('로컬 데이터가 없으면 배너를 보여 주지 않는다', async () => {
     await start();
     expect(visible('#import-banner')).toBe(false);
+  });
+});
+
+describe('Google 로그인', () => {
+  const GMAIL = 'someone@gmail.com';
+
+  test('로그인 화면에 "Google로 계속하기" 버튼이 있다', async () => {
+    await start({ signedIn: false });
+    expect(visible('#google-login')).toBe(true);
+    expect($('#google-login').textContent.trim()).toBe('Google로 계속하기');
+    expect($('#google-login .google-logo')).not.toBeNull();
+  });
+
+  test('버튼을 누르면 google provider로 redirectTo와 계정 선택 옵션을 넘긴다', async () => {
+    await start({ signedIn: false });
+    $('#google-login').click();
+    expect($('#google-login').disabled).toBe(true);
+    expect($('#auth-message').textContent).toBe('Google 로그인 화면으로 이동하는 중…');
+    await settle();
+    expect(callsOf('auth.oauth')).toEqual([
+      {
+        op: 'auth.oauth',
+        provider: 'google',
+        options: { redirectTo: REDIRECT, queryParams: { prompt: 'select_account' } },
+      },
+    ]);
+    expect($('#google-login').disabled).toBe(false);
+  });
+
+  test('Google 로그인을 마치고 돌아오면 할 일 화면과 Google 이메일을 보여 준다', async () => {
+    await start({ signedIn: false });
+    fake.simulateOAuthSignIn(GMAIL);
+    await settle();
+    expect(visible('#app-view')).toBe(true);
+    expect($('#user-email').textContent).toBe(GMAIL);
+    await addTodo('구글 계정 할 일', 'high');
+    const created = fake.db.todos.find((t) => t.text === '구글 계정 할 일');
+    expect(created.user_id).toBe(fake.session.user.id);
+  });
+
+  test('같은 이메일로 가입한 계정이 있으면 그 계정의 할 일이 그대로 보인다', async () => {
+    await start({ signedIn: false, rows: board });
+    fake.simulateOAuthSignIn(ME);
+    await settle();
+    expect(ids('medium')).toEqual(['m1', 'm2', 'm3']);
+    expect(fake.db.users.filter((u) => u.email === ME)).toHaveLength(1);
+  });
+
+  test('Google 로그인 시작에 실패하면 한국어 오류를 보여 준다', async () => {
+    await start({ signedIn: false });
+    fake.failNext('auth.oauth', { code: 'validation_failed', message: 'Unsupported provider: provider is not enabled' });
+    $('#google-login').click();
+    await settle();
+    expect($('#auth-message').textContent).toBe('Google 로그인이 아직 켜져 있지 않습니다. 관리자에게 문의해 주세요.');
+    expect($('#auth-message').classList.contains('form-message--error')).toBe(true);
+    expect($('#google-login').disabled).toBe(false);
+  });
+
+  test.each([
+    ['#error=access_denied&error_description=The+user+denied+access', '로그인을 취소했습니다.'],
+    [
+      '?error=server_error&error_code=unexpected_failure&error_description=Unable+to+exchange+external+code',
+      'Google 로그인에 실패했습니다. 잠시 후 다시 시도해 주세요.',
+    ],
+  ])('오류와 함께 돌아오면(%s) 안내하고 주소에서 오류 값을 지운다', async (suffix, message) => {
+    window.history.replaceState(null, '', `/todo/${suffix}`);
+    await start({ signedIn: false });
+    expect(visible('#auth-view')).toBe(true);
+    expect($('#auth-message').textContent).toBe(message);
+    expect(window.location.href).toBe('http://localhost/todo/');
+  });
+
+  test('오류 안내는 한 번만 보여 주고, 다시 로그아웃해도 반복하지 않는다', async () => {
+    window.history.replaceState(null, '', '/todo/#error=access_denied');
+    await start({ signedIn: false });
+    expect($('#auth-message').textContent).toBe('로그인을 취소했습니다.');
+    await login(ME, PASSWORD);
+    $('#logout-button').click();
+    await settle();
+    expect($('#auth-message').textContent).toBe('');
+  });
+
+  test('로그인 성공 주소(#access_token)는 건드리지 않는다', async () => {
+    window.history.replaceState(null, '', '/todo/#access_token=abc&token_type=bearer');
+    await start({ signedIn: false });
+    expect($('#auth-message').textContent).toBe('');
+    expect(window.location.hash).toBe('#access_token=abc&token_type=bearer');
   });
 });

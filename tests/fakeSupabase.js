@@ -260,6 +260,14 @@ function createFakeSupabase({ users = [], signedInAs = null, rows = [], autoConf
       return { data: { user: session.user, session }, error: null };
     },
 
+    /** 실제로는 브라우저가 Google로 이동한다. 가짜에서는 호출만 기록한다. */
+    async signInWithOAuth({ provider, options = {} }) {
+      calls.push({ op: 'auth.oauth', provider, options });
+      const failure = takeFailure('auth.oauth');
+      if (failure) return { data: { provider, url: null }, error: failure };
+      return { data: { provider, url: `https://accounts.google.com/o/oauth2/v2/auth?provider=${provider}` }, error: null };
+    },
+
     async signOut() {
       calls.push({ op: 'auth.signOut' });
       session = null;
@@ -301,9 +309,21 @@ function createFakeSupabase({ users = [], signedInAs = null, rows = [], autoConf
     db,
     calls,
     resetRequests,
-    /** 다음 op 호출 하나를 실패시킨다. op: select|insert|update|delete|rpc|auth.signIn|auth.signUp|auth.updateUser */
+    /** 다음 op 호출 하나를 실패시킨다. op: select|insert|update|delete|rpc|auth.signIn|auth.signUp|auth.oauth|auth.updateUser */
     failNext(op, error = { message: 'Failed to fetch' }) {
       failures.push({ op, error });
+    },
+    /** Google 로그인을 마치고 돌아온 상황을 흉내 낸다. 같은 이메일의 사용자가 있으면 그 사용자에 연결한다. */
+    simulateOAuthSignIn(email) {
+      let user = db.users.find((u) => u.email === email);
+      if (!user) {
+        user = { id: nextId('user'), email, password: null, confirmed: true };
+        db.users.push(user);
+      }
+      user.providers = Array.from(new Set([...(user.providers || ['email']), 'google']));
+      session = makeSession(user);
+      emit('SIGNED_IN');
+      return user;
     },
     /** 비밀번호 재설정 링크로 돌아온 상황을 흉내 낸다. */
     simulateRecovery(email) {

@@ -793,6 +793,37 @@ svg {
   cursor: default;
 }
 
+/* Google 로그인 버튼 (outlined) */
+.btn--outlined {
+  min-height: 48px;
+  border: 1px solid var(--md-outline);
+  background: transparent;
+  color: var(--md-on-surface);
+}
+
+.btn--outlined .google-logo {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0 8px;
+  color: var(--md-on-surface-variant);
+  font-size: 13px;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--md-outline-variant);
+}
+
 /* ===== 가져오기 배너, 로딩, 오류 ===== */
 .banner {
   display: flex;

@@ -55,6 +55,7 @@
     const authMessage = $('#auth-message');
     const authTabs = root.querySelectorAll('[data-auth-mode]');
     const forgotButton = $('#forgot-password');
+    const googleButton = $('#google-login');
     const recoveryForm = $('#recovery-form');
     const recoveryPassword = $('#recovery-password');
     const recoveryConfirm = $('#recovery-password-confirm');
@@ -86,6 +87,8 @@
     let pending = 0;
     let queue = Promise.resolve();
     let snackbarTimer = null;
+    // Google 로그인에서 오류와 함께 돌아왔으면 로그인 화면에 보여 줄 문장
+    let pendingAuthError = readOAuthError();
     let loadToken = 0;
 
     /* ---------- 공통 UI ---------- */
@@ -517,6 +520,37 @@
       }
     }
 
+    /* ---------- Google 로그인 ---------- */
+
+    /** 돌아온 주소의 OAuth 오류를 읽고, 새로고침해도 다시 뜨지 않도록 주소에서 지운다. */
+    function readOAuthError() {
+      const href = win.location && win.location.href;
+      const message = href ? Store.oauthErrorFromUrl(href) : null;
+      if (message && win.history && typeof win.history.replaceState === 'function') {
+        try {
+          win.history.replaceState(win.history.state, '', Store.stripOAuthError(href));
+        } catch (error) {
+          /* file:// 등 주소를 바꿀 수 없는 환경은 무시 */
+        }
+      }
+      return message;
+    }
+
+    async function signInWithGoogle() {
+      googleButton.disabled = true;
+      setBusy(1);
+      setMessage(authMessage, 'Google 로그인 화면으로 이동하는 중…');
+      try {
+        // 성공하면 브라우저가 Google로 이동하고, 로그인 후 redirectTo로 돌아온다.
+        await store.signInWithGoogle(redirectTo);
+      } catch (error) {
+        setMessage(authMessage, errorText(error), true);
+      } finally {
+        setBusy(-1);
+        googleButton.disabled = false;
+      }
+    }
+
     /* ---------- 로그인 상태 변화 ---------- */
 
     function enterSignedIn(session) {
@@ -556,6 +590,10 @@
       loadingMessage.hidden = true;
       authForm.reset();
       setAuthMode('signin');
+      if (pendingAuthError) {
+        setMessage(authMessage, pendingAuthError, true);
+        pendingAuthError = null;
+      }
       showView('auth');
     }
 
@@ -772,6 +810,16 @@
       submitAuth();
     });
 
+    googleButton.addEventListener('click', () => {
+      signInWithGoogle();
+    });
+
+    // 뒤로 가기로 돌아왔을 때(bfcache) 버튼이 비활성 상태로 남지 않게 한다.
+    const onPageShow = () => {
+      googleButton.disabled = false;
+    };
+    win.addEventListener('pageshow', onPageShow);
+
     forgotButton.addEventListener('click', () => {
       sendPasswordReset();
     });
@@ -877,7 +925,10 @@
       getFilter: () => filter,
       /** 지금까지 넣은 서버 요청이 모두 끝날 때 resolve된다. */
       idle: () => queue,
-      destroy: () => unsubscribe(),
+      destroy: () => {
+        unsubscribe();
+        win.removeEventListener('pageshow', onPageShow);
+      },
     };
   }
 

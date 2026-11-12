@@ -1,4 +1,4 @@
-const { createStore, toKoreanMessage, StoreError } = require('../store.js');
+const { createStore, toKoreanMessage, oauthErrorFromUrl, stripOAuthError, StoreError } = require('../store.js');
 const { createFakeSupabase } = require('./fakeSupabase.js');
 
 const ME = 'me@example.com';
@@ -26,6 +26,13 @@ describe('toKoreanMessage', () => {
     [{ message: 'TypeError: Failed to fetch' }, '서버에 연결하지 못했습니다. 인터넷 연결을 확인해 주세요.'],
   ])('%j', (error, expected) => {
     expect(toKoreanMessage(error)).toBe(expected);
+  });
+
+  test('validation_failed는 메시지로 원인을 알 수 있으면 그 문장을, 아니면 일반 문장을 쓴다', () => {
+    expect(toKoreanMessage({ code: 'validation_failed', message: 'Password should be at least 8 characters' })).toBe(
+      '비밀번호가 너무 약합니다. 8자 이상으로 더 복잡하게 입력해 주세요.'
+    );
+    expect(toKoreanMessage({ code: 'validation_failed', message: 'something else' })).toBe('입력한 값을 다시 확인해 주세요.');
   });
 
   test('알 수 없는 오류는 기본 문장을 쓴다', () => {
@@ -186,5 +193,47 @@ describe('인증', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+});
+
+describe('Google 로그인', () => {
+  test('signInWithGoogle은 google provider, redirectTo, 계정 선택 옵션을 넘긴다', async () => {
+    const { fake, store } = setup({ signedInAs: null });
+    const data = await store.signInWithGoogle('https://weable72.github.io/todo/');
+    expect(data.provider).toBe('google');
+    expect(fake.calls.find((c) => c.op === 'auth.oauth')).toEqual({
+      op: 'auth.oauth',
+      provider: 'google',
+      options: { redirectTo: 'https://weable72.github.io/todo/', queryParams: { prompt: 'select_account' } },
+    });
+  });
+
+  test('provider가 꺼져 있으면 한국어 오류', async () => {
+    const { fake, store } = setup({ signedInAs: null });
+    fake.failNext('auth.oauth', { code: 'validation_failed', message: 'Unsupported provider: provider is not enabled' });
+    await expect(store.signInWithGoogle('x')).rejects.toThrow('Google 로그인이 아직 켜져 있지 않습니다.');
+    fake.failNext('auth.oauth', { message: 'Unsupported provider: provider is not enabled' });
+    await expect(store.signInWithGoogle('x')).rejects.toThrow('Google 로그인이 아직 켜져 있지 않습니다.');
+  });
+});
+
+describe('oauthErrorFromUrl / stripOAuthError', () => {
+  const BASE = 'https://weable72.github.io/todo/';
+
+  test.each([
+    [BASE, null],
+    [`${BASE}#access_token=abc&type=bearer`, null],
+    [`${BASE}#error=access_denied&error_description=The+user+denied`, '로그인을 취소했습니다.'],
+    [`${BASE}?error=access_denied&error_code=signup_disabled&error_description=Signups+not+allowed`, '현재 새 회원가입을 받지 않습니다.'],
+    [`${BASE}?error=server_error&error_code=unexpected_failure&error_description=Unable+to+exchange+external+code`, 'Google 로그인에 실패했습니다. 잠시 후 다시 시도해 주세요.'],
+    [`${BASE}#error=invalid_request&error_description=Unsupported+provider%3A+provider+is+not+enabled`, 'Google 로그인이 아직 켜져 있지 않습니다. 관리자에게 문의해 주세요.'],
+    ['not a url', null],
+  ])('%s', (href, expected) => {
+    expect(oauthErrorFromUrl(href)).toBe(expected);
+  });
+
+  test('오류 값만 지우고 나머지 주소는 유지한다', () => {
+    expect(stripOAuthError(`${BASE}#error=access_denied&error_description=x`)).toBe(BASE);
+    expect(stripOAuthError(`${BASE}?keep=1&error=server_error&error_code=y#error_description=z`)).toBe(`${BASE}?keep=1`);
   });
 });

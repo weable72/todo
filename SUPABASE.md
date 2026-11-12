@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | 리전 | Northeast Asia (Seoul) | 사용자와 가까워 응답이 빠름 |
 | 플랜 | Free | 개인 todo 앱에는 충분 |
-| 로그인 | Supabase Auth **이메일 + 비밀번호만** 사용 (소셜 로그인 없음) | 브라우저에 공개되는 키만으로 안전하려면 사용자 구분이 필요함. 매번 메일을 보내는 매직 링크보다 메일 발송이 적어 기본 메일 발송 제한에 덜 걸림 |
+| 로그인 | Supabase Auth **이메일 + 비밀번호**와 **Google OAuth** | 브라우저에 공개되는 키만으로 안전하려면 사용자 구분이 필요함. 매직 링크는 쓰지 않아 메일 발송이 적음. Google 로그인은 메일 발송이 필요 없음(설정: `GOOGLE_OAUTH.md`) |
 | 보안 | 모든 테이블에 **RLS**(Row Level Security), 본인 행만 접근 | 프론트엔드 키는 누구나 볼 수 있음 |
 | 테이블 | `public.todos` 하나 | 현재 데이터 모델(`id, text, completed, priority`) + 소유자 + 정렬 위치 |
 | 정렬 | `position`(실수) 값 + `move_todo` DB 함수 | 드래그 한 번에 한 행만 수정, 서버에서 원자적으로 계산 |
@@ -36,16 +36,16 @@
 
 ---
 
-## 2. 로그인(Auth) 설정 — 이메일 로그인만 사용
+## 2. 로그인(Auth) 설정 — 이메일 + Google
 
-정적 사이트에서는 브라우저에 공개 키가 그대로 노출됩니다. 그래서 "누구의 데이터인가"를 로그인으로 구분하고, RLS로 본인 데이터만 허용해야 안전합니다. 로그인 방법은 **이메일 + 비밀번호 하나만** 씁니다.
+정적 사이트에서는 브라우저에 공개 키가 그대로 노출됩니다. 그래서 "누구의 데이터인가"를 로그인으로 구분하고, RLS로 본인 데이터만 허용해야 안전합니다. 로그인 방법은 **이메일 + 비밀번호**와 **Google 로그인** 두 가지입니다. Google 설정은 `GOOGLE_OAUTH.md`를 따릅니다.
 
-### 2-1. 이메일 로그인만 켜기
+### 2-1. 이메일 로그인 켜기
 **Authentication → Sign In / Providers**에서 다음을 확인합니다.
 - **Email**: Enabled
   - **Confirm email**: 켬 (가입할 때 확인 메일의 링크를 눌러야 로그인 가능)
   - **Minimum password length**: 8 이상
-- **GitHub, Google 등 다른 provider**: 모두 꺼 둠(기본값이 꺼짐)
+- **Google**: 켬 (`GOOGLE_OAUTH.md` 참고). GitHub 등 그 밖의 provider는 꺼 둠
 - **Allow anonymous sign-ins**: 끔
 - **Allow new users to sign up**: 처음에는 켬. 혼자만 쓸 앱이라면 **내 계정을 만든 뒤 끄면** 다른 사람이 가입할 수 없습니다.
 
