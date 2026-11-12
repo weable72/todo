@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>오늘 할일</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js" integrity="sha384-TcHRA3zBbn+Lexh5n+Oil4guNPOS3rjNDpGRAN46u/s/mB2IZ50ceC6TYDU2yvgK" crossorigin="anonymous" defer></script>
+  <script src="config.js" defer></script>
+  <script src="todo.js" defer></script>
+  <script src="store.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="top-app-bar">
+    <div class="top-app-bar__inner">
+      <svg class="top-app-bar__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 3h-4.18C14.4 1.84 13.3 1 12 1s-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm-2 14-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
+      <h1 class="top-app-bar__title">오늘 할일</h1>
+      <span id="todo-count" class="top-app-bar__count" aria-live="polite" hidden></span>
+      <div id="user-menu" class="user-menu" hidden>
+        <span id="user-email" class="user-menu__email"></span>
+        <button type="button" id="logout-button" class="btn btn--text">로그아웃</button>
+      </div>
+    </div>
+    <div id="progress" class="linear-progress" role="progressbar" aria-label="처리 중" hidden></div>
+  </header>
+
+  <main class="content">
+    <!-- 로그인 / 회원가입 -->
+    <section id="auth-view" class="card auth-card" aria-labelledby="auth-title" hidden>
+      <h2 id="auth-title" class="auth-card__title">로그인</h2>
+      <div class="auth-tabs" role="tablist" aria-label="로그인 방식">
+        <button type="button" class="auth-tab selected" role="tab" data-auth-mode="signin" aria-selected="true">로그인</button>
+        <button type="button" class="auth-tab" role="tab" data-auth-mode="signup" aria-selected="false">회원가입</button>
+      </div>
+      <form id="auth-form" class="auth-form" novalidate>
+        <div class="text-field">
+          <input id="auth-email" type="email" placeholder=" " autocomplete="email" required>
+          <label for="auth-email">이메일</label>
+        </div>
+        <div class="text-field">
+          <input id="auth-password" type="password" placeholder=" " autocomplete="current-password" minlength="8" required>
+          <label for="auth-password">비밀번호</label>
+        </div>
+        <div class="text-field" id="auth-password-confirm-field" hidden>
+          <input id="auth-password-confirm" type="password" placeholder=" " autocomplete="new-password" minlength="8">
+          <label for="auth-password-confirm">비밀번호 확인</label>
+        </div>
+        <p id="auth-message" class="form-message" role="status" aria-live="polite"></p>
+        <button type="submit" id="auth-submit" class="btn btn--filled btn--block">로그인</button>
+        <button type="button" id="forgot-password" class="btn btn--text btn--block">비밀번호를 잊으셨나요?</button>
+      </form>
+    </section>
+
+    <!-- 비밀번호 재설정 (메일 링크로 돌아왔을 때) -->
+    <section id="recovery-view" class="card auth-card" aria-labelledby="recovery-title" hidden>
+      <h2 id="recovery-title" class="auth-card__title">새 비밀번호 설정</h2>
+      <form id="recovery-form" class="auth-form" novalidate>
+        <div class="text-field">
+          <input id="recovery-password" type="password" placeholder=" " autocomplete="new-password" minlength="8" required>
+          <label for="recovery-password">새 비밀번호</label>
+        </div>
+        <div class="text-field">
+          <input id="recovery-password-confirm" type="password" placeholder=" " autocomplete="new-password" minlength="8" required>
+          <label for="recovery-password-confirm">새 비밀번호 확인</label>
+        </div>
+        <p id="recovery-message" class="form-message" role="status" aria-live="polite"></p>
+        <button type="submit" class="btn btn--filled btn--block">비밀번호 변경</button>
+      </form>
+    </section>
+
+    <!-- 할 일 화면 (로그인 후) -->
+    <div id="app-view" hidden>
+      <div id="import-banner" class="card banner" hidden>
+        <p id="import-text" class="banner__text"></p>
+        <div class="banner__actions">
+          <button type="button" id="import-discard" class="btn btn--text">버리기</button>
+          <button type="button" id="import-confirm" class="btn btn--filled">가져오기</button>
+        </div>
+      </div>
+
+      <form id="new-todo-form" class="card new-todo">
+        <div class="text-field">
+          <input id="new-todo-input" type="text" placeholder=" " autocomplete="off" maxlength="500">
+          <label for="new-todo-input">할 일을 입력하세요</label>
+        </div>
+        <div class="new-todo__actions">
+          <div class="segmented" role="radiogroup" aria-label="우선순위">
+            <label class="segment segment--high">
+              <input type="radio" name="priority" value="high">
+              <span class="segment__label"><span class="priority-dot" aria-hidden="true"></span>높음</span>
+            </label>
+            <label class="segment segment--medium">
+              <input type="radio" name="priority" value="medium" checked>
+              <span class="segment__label"><span class="priority-dot" aria-hidden="true"></span>중간</span>
+            </label>
+            <label class="segment segment--low">
+              <input type="radio" name="priority" value="low">
+              <span class="segment__label"><span class="priority-dot" aria-hidden="true"></span>낮음</span>
+            </label>
+          </div>
+          <button type="submit" class="btn btn--filled">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+            추가
+          </button>
+        </div>
+      </form>
+
+      <div class="toolbar">
+        <div class="chips" role="group" aria-label="필터">
+          <button type="button" class="chip selected" data-filter="all">전체</button>
+          <button type="button" class="chip" data-filter="active">진행 중</button>
+          <button type="button" class="chip" data-filter="completed">완료</button>
+        </div>
+        <button type="button" id="clear-completed" class="btn btn--text">완료 항목 지우기</button>
+      </div>
+
+      <p id="loading-message" class="loading-message" hidden>불러오는 중…</p>
+
+      <div id="board" class="board">
+        <section class="card priority-section priority-section--high" data-priority="high" aria-labelledby="section-title-high">
+          <header class="section-header">
+            <span class="priority-dot" aria-hidden="true"></span>
+            <h2 id="section-title-high">높음</h2>
+            <span class="badge" data-count></span>
+          </header>
+          <ul class="todo-list" data-priority="high"></ul>
+          <p class="empty-hint">여기로 끌어다 놓기</p>
+        </section>
+
+        <section class="card priority-section priority-section--medium" data-priority="medium" aria-labelledby="section-title-medium">
+          <header class="section-header">
+            <span class="priority-dot" aria-hidden="true"></span>
+            <h2 id="section-title-medium">중간</h2>
+            <span class="badge" data-count></span>
+          </header>
+          <ul class="todo-list" data-priority="medium"></ul>
+          <p class="empty-hint">여기로 끌어다 놓기</p>
+        </section>
+
+        <section class="card priority-section priority-section--low" data-priority="low" aria-labelledby="section-title-low">
+          <header class="section-header">
+            <span class="priority-dot" aria-hidden="true"></span>
+            <h2 id="section-title-low">낮음</h2>
+            <span class="badge" data-count></span>
+          </header>
+          <ul class="todo-list" data-priority="low"></ul>
+          <p class="empty-hint">여기로 끌어다 놓기</p>
+        </section>
+      </div>
+    </div>
+
+    <p id="fatal-message" class="card fatal-message" role="alert" hidden></p>
+  </main>
+
+  <div id="snackbar" class="snackbar" role="status" aria-live="polite" hidden></div>
+</body>
+</html>
